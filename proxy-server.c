@@ -14,7 +14,6 @@
 #define BUFFER_SIZE 1024
 
 
-void * whattodo( void * arg );
 int createServer(int portnumber);
 int createClient();
 
@@ -26,6 +25,7 @@ int main(int argc, char *argv[])
 
   if ( argc <= 1)
   {
+    fprintf(stderr, "use: ./proxy <port number> \n");
     return -1;
   }
 
