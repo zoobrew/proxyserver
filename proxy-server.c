@@ -24,7 +24,7 @@ char *msg = "Hello world";
 int main(int argc, char *argv[])
 {
 
-  if ( argc < 1)
+  if ( argc <= 1)
   {
     return -1;
   }
@@ -36,7 +36,13 @@ int main(int argc, char *argv[])
     perror("error parsing port number");
     exit (1);
   }
-  createServer(port_number);
+    /* handle socket in child process */
+    int pid = fork();
+    if ( pid == 0 ) 
+    {
+      createClient();
+    }
+    createServer(port_number);
 
   return 0; /* never executed */
 
@@ -113,7 +119,7 @@ int createServer(int portnumber){
   }
 }
 
-/*
+
 int createClient()
 {
 
@@ -131,15 +137,15 @@ int createClient()
   }
 
   server.sin_family = PF_INET;
-  hp = gethostbyname( "linux00.cs.rpi.edu" );  // localhost
+  hp = gethostbyname( "localhost" );  // localhost
   if ( hp == NULL ) {
     perror( "client-Unknown host" );
     exit( 1 );
   }
 
-  /* could also use memcpy 
+  /* could also use memcpy */
   bcopy( (char *)hp->h_addr, (char *)&server.sin_addr, hp->h_length );
-  port = 8127;
+  port = 8000;
   server.sin_port = htons( port );
 
   if ( connect( sock, (struct sockaddr *)&server, sizeof( server) ) < 0 ) {
@@ -175,4 +181,4 @@ int createClient()
 
   return 0;
 }
-*/
+
