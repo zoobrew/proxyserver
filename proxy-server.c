@@ -14,8 +14,10 @@
 #define BUFFER_SIZE 1024
 
 
-int createServer(int portnumber);
+void createServer(int portnumber);
 int createClient();
+int getRequestHost(char* method);
+char* createNewRequest(char* oldRequest);
 
 char *msg = "Hello world";
 
@@ -38,7 +40,7 @@ int main(int argc, char *argv[])
   }
     /* handle socket in child process */
     int pid = fork();
-    if ( pid == 0 ) 
+    if ( pid == 0 )
     {
       //createClient();
       exit(0);
@@ -49,8 +51,8 @@ int main(int argc, char *argv[])
 
 }
 
-int createServer(int portnumber){
-  
+void createServer(int portnumber){
+
   int newsock, len, n, pid;
   unsigned int fromlen;
 
@@ -75,12 +77,12 @@ int createServer(int portnumber){
   len = sizeof(server);
 
   /* bind to the port number given as argument */
-  if ( bind( socket_handle, (struct sockaddr*)&server, len) < 0 ) 
+  if ( bind( socket_handle, (struct sockaddr*)&server, len) < 0 )
   {
     perror("server-bind()");
     exit(1);
   }
- 
+
   fromlen = sizeof( client);
   /* asssign the socket as a listener */
   listen(socket_handle, 5);
@@ -91,27 +93,27 @@ int createServer(int portnumber){
     printf( "server-Blocked on accept()\n" );
     newsock = accept( socket_handle, (struct sockaddr *)&client, &fromlen );
     printf( "server-Accepted client connection\n" );
-    fflush( NULL );
+    //fflush( NULL );
 
     /* handle socket in child process */
     pid = fork();
-    if ( pid == 0 ) 
+    if ( pid == 0 )
     {
       /* can also use read() and write() */
       n = recv( newsock, buffer, BUFFER_SIZE - 1, 0 );   // BLOCK
-      if ( n < 1 ) 
+      if ( n < 1 )
       {
         perror( "server-recv()" );
       }
-      else 
+      else
       {
         buffer[n] = '\0';
-        printf( "server-Received message from %s: %s\n",
-                inet_ntoa((struct in_addr)client.sin_addr),
-                buffer );
+        printf( "server-Received message from %s: %s\n", inet_ntoa((struct in_addr)client.sin_addr), buffer );
+        createNewRequest(buffer);
+
       }
       n = send( newsock, buffer, BUFFER_SIZE, 0 );
-      if ( n < strlen( msg ) ) 
+      if ( n < strlen( msg ) )
       {
         perror( "server-Write()" );
       }
@@ -161,19 +163,19 @@ int createClient()
     sleep( 5 );
 
     n = write( sock, msg, strlen( msg ) );
-    if ( n < strlen( msg ) ) 
+    if ( n < strlen( msg ) )
     {
       perror( "client-write()" );
       exit( 1 );
     }
 
     n = read( sock, buffer, 1024 );   // BLOCK
-    if ( n < 1 ) 
+    if ( n < 1 )
     {
       perror( "client-read()" );
       exit( 1 );
     }
-    else 
+    else
     {
       buffer[n] = '\0';
       printf( "client-Received message from server: %s\n", buffer );
@@ -184,4 +186,53 @@ int createClient()
 
   return 0;
 }
+char* createNewRequest(char* oldRequest){
+  char* firstLine = strtok(oldRequest, "\r\n");;
+  printf("Firstline is: %s\n", firstLine);
+  char* requestMethod = (char*)malloc(5*sizeof(char));
+  sscanf(firstLine, "%s", requestMethod);
+  if ((getRequestHost(requestMethod)) == 0)
+  {
+    /* Isolate the hostname from the URI on the Request-Line:*/
+    char *hostnameBegin = strstr(firstLine, "://")+3;
+    char *hostnameEnd = strstr(hostnameBegin, "/");
+    int hostnameLength = hostnameEnd - hostnameBegin;
+    char* hostname = (char *)malloc(hostnameLength+1);
+    strncpy(hostname,hostnameBegin, hostnameLength);
+    hostname[hostnameLength+1] = '\0';
+    printf("hostname is: %s\n", hostname);
+    char* newRequestLine = malloc(strlen(requestMethod)+ 1 + strlen(hostname) + strlen(" HTTP/1.1"));
+    strncpy(newRequestLine, requestMethod, strlen(requestMethod));
+    strncpy(newRequestLine+strlen(requestMethod), " ", 1);
+    strncpy(newRequestLine+strlen(requestMethod)+1, hostname, strlen(hostname));
+    strncpy(newRequestLine+strlen(requestMethod)+1+ strlen(hostname), " HTTP/1.1", strlen(" HTTP/1.1"));
+    printf("newRequestLine = %s\n", newRequestLine);
+
+    free(newRequestLine);
+    return hostname;
+  }
+  free(requestMethod);
+  char* secondLine = strtok(NULL, "\r\n");
+  printf("Secondline is: %s", secondLine);
+  return NULL;
+}
+
+int getRequestHost(char* method)
+{
+  if((strstr(method, "GET")) != NULL)
+  {
+    if((strstr(method, "POST")) != NULL)
+    {
+      if((strstr(method, "HEAD")) != NULL)
+      {
+        perror("unsupported request method");
+        return -1;
+      }
+    }
+  }
+  return 0;
+}
+
+
+
 
