@@ -97,7 +97,6 @@ int createServer(int portnumber){
     pid = fork();
     if ( pid == 0 ) 
     {
-      sleep( 5 );
       /* can also use read() and write() */
       n = recv( newsock, buffer, BUFFER_SIZE - 1, 0 );   // BLOCK
       if ( n < 1 ) 
