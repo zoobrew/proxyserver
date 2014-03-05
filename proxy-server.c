@@ -40,7 +40,8 @@ int main(int argc, char *argv[])
     int pid = fork();
     if ( pid == 0 ) 
     {
-      createClient();
+      //createClient();
+      exit(0);
     }
     createServer(port_number);
 
@@ -58,34 +59,37 @@ int createServer(int portnumber){
   struct sockaddr_in server;
 
   char buffer[ BUFFER_SIZE ];
-  int socketfd = socket(PF_INET, SOCK_STREAM, 0);
+  /* create the socket for the server */
+  int socket_handle = socket(AF_INET, SOCK_STREAM, 0);
 
-  if(socketfd < 0)
+  if(socket_handle< 0)
   {
     perror("server-socket()");
     exit( 1 );
   }
 
-  server.sin_family = PF_INET;
+  server.sin_family = AF_INET;
   server.sin_addr.s_addr = INADDR_ANY;
-
   server.sin_port = htons(portnumber);
+
   len = sizeof(server);
 
-  if ( bind( socketfd, (struct sockaddr*)&server, len) < 0 ) 
+  /* bind to the port number given as argument */
+  if ( bind( socket_handle, (struct sockaddr*)&server, len) < 0 ) 
   {
     perror("server-bind()");
     exit(1);
   }
  
   fromlen = sizeof( client);
-  listen(socketfd, 5);
+  /* asssign the socket as a listener */
+  listen(socket_handle, 5);
   printf( "server-Listener socket created and bound to port %d\n", portnumber );
 
   while (1)
   {
     printf( "server-Blocked on accept()\n" );
-    newsock = accept( socketfd, (struct sockaddr *)&client, &fromlen );
+    newsock = accept( socket_handle, (struct sockaddr *)&client, &fromlen );
     printf( "server-Accepted client connection\n" );
     fflush( NULL );
 
@@ -107,7 +111,7 @@ int createServer(int portnumber){
                 inet_ntoa((struct in_addr)client.sin_addr),
                 buffer );
       }
-      n = send( newsock, msg, strlen( msg ), 0 );
+      n = send( newsock, buffer, BUFFER_SIZE, 0 );
       if ( n < strlen( msg ) ) 
       {
         perror( "server-Write()" );
