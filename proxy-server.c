@@ -14,10 +14,11 @@
 #define BUFFER_SIZE 1024
 
 
-void createServer(int portnumber);
+void createServer(int portnumber, char* blacklist[]);
 int createClient();
-int getRequestHost(char* method);
-char* createNewRequest(char* oldRequest);
+int checkRequestMethod(char* method);
+char* getHostName(char* oldRequest);
+char* forwardRequestToHost(char* host);
 
 char *msg = "Hello world";
 
@@ -25,9 +26,9 @@ char *msg = "Hello world";
 int main(int argc, char *argv[])
 {
 
-  if ( argc <= 1)
+  if ( argc <= 2)
   {
-    fprintf(stderr, "use: ./proxy <port number> \n");
+    fprintf(stderr, "use: ./proxy <port number> <blacklisted hosts> \n");
     return -1;
   }
 
@@ -38,28 +39,34 @@ int main(int argc, char *argv[])
     perror("error parsing port number");
     exit (1);
   }
-    /* handle socket in child process */
-    int pid = fork();
-    if ( pid == 0 )
-    {
-      //createClient();
-      exit(0);
-    }
-    createServer(port_number);
+  char* blacklistedHosts[argc-2];
+  int arg = 2;
+  for(; arg < argc; arg++)
+  {
+    blacklistedHosts[arg] = argv[arg];
+  }
+  /* handle socket in child process */
+  int pid = fork();
+  if ( pid == 0 )
+  {
+    //createClient();
+    exit(0);
+  }
+  createServer(port_number, blacklistedHosts);
 
   return 0; /* never executed */
 
 }
 
-void createServer(int portnumber){
-
+void createServer(int portnumber, char* blacklist[])
+{
   int newsock, len, n, pid;
   unsigned int fromlen;
 
   /* socket structs */
   struct sockaddr_in client;
   struct sockaddr_in server;
-
+  struct sockaddr_in hostSocket;
   char buffer[ BUFFER_SIZE ];
   /* create the socket for the server */
   int socket_handle = socket(AF_INET, SOCK_STREAM, 0);
@@ -73,7 +80,6 @@ void createServer(int portnumber){
   server.sin_family = AF_INET;
   server.sin_addr.s_addr = INADDR_ANY;
   server.sin_port = htons(portnumber);
-
   len = sizeof(server);
 
   /* bind to the port number given as argument */
@@ -82,19 +88,16 @@ void createServer(int portnumber){
     perror("server-bind()");
     exit(1);
   }
-
   fromlen = sizeof( client);
   /* asssign the socket as a listener */
   listen(socket_handle, 5);
   printf( "server-Listener socket created and bound to port %d\n", portnumber );
-
   while (1)
   {
     printf( "server-Blocked on accept()\n" );
     newsock = accept( socket_handle, (struct sockaddr *)&client, &fromlen );
     printf( "server-Accepted client connection\n" );
-    //fflush( NULL );
-
+    fflush( NULL );
     /* handle socket in child process */
     pid = fork();
     if ( pid == 0 )
@@ -109,9 +112,22 @@ void createServer(int portnumber){
       {
         buffer[n] = '\0';
         printf( "server-Received message from %s: %s\n", inet_ntoa((struct in_addr)client.sin_addr), buffer );
-        createNewRequest(buffer);
-
+        char* hostname = getHostName(buffer);
+        int host = 0;
+        for (; host < sizeof(blacklist); host++)
+        {
+          if( strcmp(blacklist[host], hostname) == 0)
+          {
+            perror("requested host is blacklisted");
+            exit(1);
+          }
+        }
       }
+      int host_handle = socket(AF_INET, SOCK_STREAM, 0);
+      host_handle.sin_family = AF_INET;
+      host_handle.sin_addr.s_addr = INADDR_ANY;
+      host_handle.sin_port = htons(portnumber);
+      
       n = send( newsock, buffer, BUFFER_SIZE, 0 );
       if ( n < strlen( msg ) )
       {
@@ -157,18 +173,15 @@ int createClient()
     perror( "client-connect()" );
     exit( 1 );
   }
-
   while ( 1 )
   {
     sleep( 5 );
-
     n = write( sock, msg, strlen( msg ) );
     if ( n < strlen( msg ) )
     {
       perror( "client-write()" );
       exit( 1 );
     }
-
     n = read( sock, buffer, 1024 );   // BLOCK
     if ( n < 1 )
     {
@@ -181,17 +194,16 @@ int createClient()
       printf( "client-Received message from server: %s\n", buffer );
     }
   }
-
   close( sock );
 
   return 0;
 }
-char* createNewRequest(char* oldRequest){
+char* getHostName(char* oldRequest){
   char* firstLine = strtok(oldRequest, "\r\n");;
   printf("Firstline is: %s\n", firstLine);
   char* requestMethod = (char*)malloc(5*sizeof(char));
   sscanf(firstLine, "%s", requestMethod);
-  if ((getRequestHost(requestMethod)) == 0)
+  if (checkRequestMethod(requestMethod))
   {
     /* Isolate the hostname from the URI on the Request-Line:*/
     char *hostnameBegin = strstr(firstLine, "://")+3;
@@ -217,7 +229,7 @@ char* createNewRequest(char* oldRequest){
   return NULL;
 }
 
-int getRequestHost(char* method)
+int checkRequestMethod(char* method)
 {
   if((strstr(method, "GET")) != NULL)
   {
@@ -226,13 +238,15 @@ int getRequestHost(char* method)
       if((strstr(method, "HEAD")) != NULL)
       {
         perror("unsupported request method");
-        return -1;
+        return 0;
       }
     }
   }
-  return 0;
+  return 1;
 }
 
-
-
+char* forwardRequestToHost(char* host)
+{
+  return NULL;
+}
 
