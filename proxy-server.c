@@ -140,42 +140,26 @@ char* getHostName(char* oldRequest){
   return NULL;
 }
 
-char* filterRequest(char* request){
+char* filterRequest(char* request)
+{
   int strsize = strlen(request) + 1;
-  char* newRequest = (char *)malloc(strsize);
-
-  char* firstLine = strtok(request, "\r\n");;
-  printf("Firstline is: %s\n", firstLine);
-  char* requestMethod = (char*)malloc(5*sizeof(char));
-  sscanf(firstLine, "%s", requestMethod);
-  if (checkRequestMethod(requestMethod))
+  char* requestCopy = (char *)malloc(strsize);
+  char* newRequest = (char*)malloc(1);
+  int newRequestSize = 1;
+  strcpy(request, requestCopy);
+  char* line = strtok(request, "\r\n");;
+  while ( NULL != line)
   {
-    /* Isolate the hostname from the URI on the Request-Line:*/
-    char *hostnameBegin = strstr(firstLine, "://")+3;
-    char *hostnameEnd = strstr(hostnameBegin, "/");
-    int hostnameLength = hostnameEnd - hostnameBegin;
-    char* hostname = (char *)malloc(hostnameLength+1);
-    strncpy(hostname,hostnameBegin, hostnameLength);
-    hostname[hostnameLength+1] = '\0';
-    printf("hostname is: %s\n", hostname);
-    char* newRequestLine = malloc(strlen(requestMethod)+ 1 + strlen(hostname) + strlen(" HTTP/1.1"));
-    strncpy(newRequestLine, requestMethod, strlen(requestMethod));
-    strncpy(newRequestLine+strlen(requestMethod), " ", 1);
-    strncpy(newRequestLine+strlen(requestMethod)+1, hostname, strlen(hostname));
-    strncpy(newRequestLine+strlen(requestMethod)+1+ strlen(hostname), " HTTP/1.1", strlen(" HTTP/1.1"));
-    printf("newRequestLine = %s\n", newRequestLine);
-
-    free(newRequestLine);
-    free(requestMethod);
-    free(request);
-    return hostname;
+    char *encodingLine = strstr(line, "Accept-Encoding");
+    if ( encodingLine == line){
+      continue;
+    }
+    newRequest = realloc(newRequest, newRequestSize + strlen(line));
+    strncpy(newRequest+newRequestSize, line, strlen(line));
+    newRequestSize += strlen(line);
   }
-  free(requestMethod);
-  free(request);
-  char* secondLine = strtok(NULL, "\r\n");
-  printf("Secondline is: %s", secondLine);
-  return NULL;
-
+  printf("New request is: %s\n", newRequest);
+  return newRequest;
 }
 
 int checkRequestMethod(char* method)
@@ -194,11 +178,6 @@ int checkRequestMethod(char* method)
   return 1;
 }
 
-char* forwardRequestToHost(char* host)
-{
-  return NULL;
-}
-
 int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
 {
   int n,m;
@@ -206,17 +185,20 @@ int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
   /* message from client */
   char clientBuffer[ BUFFER_SIZE ];
   char serverBuffer[ BUFFER_SIZE ];
+  char* filteredRequest;
   /* can also use read() and write() */
   n = recv( newsock, clientBuffer, BUFFER_SIZE - 1, 0 );   // BLOCK
   if ( n < 1 )
   {
     perror( "server-recv()" );
+    exit(1);
   }
   else
   {
     clientBuffer[n] = '\0';
     printf( "server-Received message from %s: %s\n", inet_ntoa((struct in_addr)client.sin_addr), clientBuffer );
     hostname = getHostName(clientBuffer);
+    filteredRequest = filterRequest(clientBuffer);
     printf("client Buffer: %s", clientBuffer);
     int host = 0;
     for (; host < sizeof(blacklist); host++)
@@ -242,7 +224,7 @@ int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
     exit( 1 );
   }
   printf("Connected to Host\n");
-  n = write( hostsock, clientBuffer, strlen(clientBuffer) );
+  n = write( hostsock, filteredRequest, strlen(clientBuffer) );
   if ( n < strlen( clientBuffer ) )
   {
     perror( "host-write()" );
@@ -277,6 +259,7 @@ int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
     perror( "host-write nullterminate()" );
     exit( 1 );
   }
+  free(filteredRequest);
   close( hostsock);
   exit(0);
 }
