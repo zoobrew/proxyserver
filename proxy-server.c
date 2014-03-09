@@ -145,19 +145,26 @@ char* filterRequest(char* request)
   int strsize = strlen(request) + 1;
   char* requestCopy = (char *)malloc(strsize);
   char* newRequest = (char*)malloc(1);
-  int newRequestSize = 1;
-  strcpy(request, requestCopy);
-  char* line = strtok(request, "\r\n");;
-  while ( NULL != line)
+  int newRequestSize = 3;
+  strcpy(requestCopy, request);
+  char* line = strtok(requestCopy, "\r\n");
+  while ( line != NULL)
   {
-    char *encodingLine = strstr(line, "Accept-Encoding");
-    if ( encodingLine == line){
-      continue;
+    if ( strstr(line, "Accept-Encoding") != NULL)
+    {
+      line = strtok(NULL, "\r\n");
+    } else
+    {
+      newRequest = realloc(newRequest, (newRequestSize + strlen(line)+2));
+      strncpy((newRequest+newRequestSize-3), line, strlen(line));
+      strncpy((newRequest+newRequestSize+strlen(line)-3), "\r\n", 2);
+      newRequestSize += strlen(line)+2;
+      line = strtok(NULL, "\r\n");
     }
-    newRequest = realloc(newRequest, newRequestSize + strlen(line));
-    strncpy(newRequest+newRequestSize, line, strlen(line));
-    newRequestSize += strlen(line);
   }
+  printf("New request is: %s\n", newRequest);
+  strncpy((newRequest+newRequestSize-3), "\r\n\0", 3);
+  //newRequest[newRequestSize] = '\0';
   printf("New request is: %s\n", newRequest);
   return newRequest;
 }
@@ -198,18 +205,19 @@ int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
     clientBuffer[n] = '\0';
     printf( "server-Received message from %s: %s\n", inet_ntoa((struct in_addr)client.sin_addr), clientBuffer );
     hostname = getHostName(clientBuffer);
-    filteredRequest = filterRequest(clientBuffer);
-    printf("client Buffer: %s", clientBuffer);
-    int host = 0;
-    for (; host < sizeof(blacklist); host++)
+    printf("Returned from getHostname\n");
+    /*int host;
+    for (host= 0; host < sizeof(blacklist); host++)
     {
       if( strcmp(blacklist[host], hostname) == 0)
       {
         perror("requested host is blacklisted");
         exit(1);
       }
-    }
+    }*/
   }
+  printf("client Buffer: %s", clientBuffer);
+  filteredRequest = filterRequest(clientBuffer);
   /* create connection to host */
   struct sockaddr_in host;
   struct hostent *hp;
@@ -230,7 +238,8 @@ int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
     perror( "host-write()" );
     exit( 1 );
   }
-  printf("Sent request to Host: %s \n", clientBuffer);
+  printf("Sent request to Host: %s \n", filteredRequest);
+  n=1;
   while(n != 0)
   {
     
@@ -238,7 +247,6 @@ int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
     if ( n < 1 )
     {
       perror( "host-read()" );
-      exit( 1 );
     }
     else
     {
