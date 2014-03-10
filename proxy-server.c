@@ -15,13 +15,11 @@
 #define BUFFER_SIZE 5120
 
 
-void createServer(int portnumber, char* blacklist[]);
-int createClient();
+void createServer(int portnumber, char* blacklist[], int blacklistSize);
 int checkRequestMethod(char* method);
 char* getHostName(char* oldRequest);
 char* filterRequest(char* request);
-char* forwardRequestToHost(char* host);
-int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[]);
+void handleConnection(int newsock, struct sockaddr_in client, char* blacklist[], int blacklistSize);
 
 char *msg = "Hello world";
 
@@ -46,15 +44,15 @@ int main(int argc, char *argv[])
   int arg = 2;
   for(; arg < argc; arg++)
   {
-    blacklistedHosts[arg] = argv[arg];
+    blacklistedHosts[arg-2] = argv[arg];
   }
-  createServer(port_number, blacklistedHosts);
+  createServer(port_number, blacklistedHosts, argc-2);
 
   return 0; /* never executed */
 
 }
 
-void createServer(int portnumber, char* blacklist[])
+void createServer(int portnumber, char *blacklist[], int blacklistSize)
 {
   
   int newsock, len, pid;
@@ -86,18 +84,15 @@ void createServer(int portnumber, char* blacklist[])
   fromlen = sizeof( client);
   /* asssign the socket as a listener */
   listen(socket_handle, 5);
-  printf( "server-Listener socket created and bound to port %d\n", portnumber );
   while (1)
   {
-    printf( "server-Blocked on accept()\n" );
     newsock = accept( socket_handle, (struct sockaddr *)&client, &fromlen );
-    printf( "server-Accepted client connection\n" );
     fflush( NULL );
     /* handle socket in child process */
     pid = fork();
     if ( pid == 0 )
     {
-      handleConnection(newsock, client, blacklist);
+      handleConnection(newsock, client, blacklist, blacklistSize);
       close (newsock);
     }
   }
@@ -108,7 +103,7 @@ char* getHostName(char* oldRequest){
   char* request = (char *)malloc(strsize);
   strcpy(request, oldRequest);
   char* firstLine = strtok(request, "\r\n");;
-  printf("Firstline is: %s\n", firstLine);
+  printf("%s\n", firstLine);
   char* requestMethod = (char*)malloc(5*sizeof(char));
   sscanf(firstLine, "%s", requestMethod);
   if (checkRequestMethod(requestMethod))
@@ -120,23 +115,12 @@ char* getHostName(char* oldRequest){
     char* hostname = (char *)malloc(hostnameLength+1);
     strncpy(hostname,hostnameBegin, hostnameLength);
     hostname[hostnameLength+1] = '\0';
-    printf("hostname is: %s\n", hostname);
-    char* newRequestLine = malloc(strlen(requestMethod)+ 1 + strlen(hostname) + strlen(" HTTP/1.1"));
-    strncpy(newRequestLine, requestMethod, strlen(requestMethod));
-    strncpy(newRequestLine+strlen(requestMethod), " ", 1);
-    strncpy(newRequestLine+strlen(requestMethod)+1, hostname, strlen(hostname));
-    strncpy(newRequestLine+strlen(requestMethod)+1+ strlen(hostname), " HTTP/1.1", strlen(" HTTP/1.1"));
-    printf("newRequestLine = %s\n", newRequestLine);
-
-    free(newRequestLine);
     free(requestMethod);
     free(request);
     return hostname;
   }
   free(requestMethod);
   free(request);
-  char* secondLine = strtok(NULL, "\r\n");
-  printf("Secondline is: %s", secondLine);
   return NULL;
 }
 
@@ -162,10 +146,7 @@ char* filterRequest(char* request)
       line = strtok(NULL, "\r\n");
     }
   }
-  printf("New request is: %s\n", newRequest);
   strncpy((newRequest+newRequestSize-3), "\r\n\0", 3);
-  //newRequest[newRequestSize] = '\0';
-  printf("New request is: %s\n", newRequest);
   return newRequest;
 }
 
@@ -185,7 +166,7 @@ int checkRequestMethod(char* method)
   return 1;
 }
 
-int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
+void handleConnection(int newsock, struct sockaddr_in client, char* blacklist[], int blacklistSize)
 {
   int n,m;
   char* hostname;
@@ -203,71 +184,82 @@ int handleConnection(int newsock, struct sockaddr_in client, char* blacklist[])
   else
   {
     clientBuffer[n] = '\0';
-    printf( "server-Received message from %s: %s\n", inet_ntoa((struct in_addr)client.sin_addr), clientBuffer );
+    printf("%s: ", inet_ntoa(client.sin_addr));
     hostname = getHostName(clientBuffer);
-    printf("Returned from getHostname\n");
-    /*int host;
-    for (host= 0; host < sizeof(blacklist); host++)
+    if (hostname == NULL)
     {
-      if( strcmp(blacklist[host], hostname) == 0)
-      {
-        perror("requested host is blacklisted");
-        exit(1);
-      }
-    }*/
-  }
-  printf("client Buffer: %s", clientBuffer);
-  filteredRequest = filterRequest(clientBuffer);
-  /* create connection to host */
-  struct sockaddr_in host;
-  struct hostent *hp;
-  int hostsock = socket( PF_INET, SOCK_STREAM, 0 );
-  hp = gethostbyname( hostname );
-  bcopy( (char *)hp->h_addr, (char *)&host.sin_addr, hp->h_length );
-
-  host.sin_family = AF_INET;
-  host.sin_port = htons(80);
-  if ( connect( hostsock, (struct sockaddr *)&host, sizeof( host) ) < 0 ) {
-    perror( "host-connect()" );
-    exit( 1 );
-  }
-  printf("Connected to Host\n");
-  n = write( hostsock, filteredRequest, strlen(clientBuffer) );
-  if ( n < strlen( clientBuffer ) )
-  {
-    perror( "host-write()" );
-    exit( 1 );
-  }
-  printf("Sent request to Host: %s \n", filteredRequest);
-  n=1;
-  while(n != 0)
-  {
-    
-    n = read( hostsock, serverBuffer, BUFFER_SIZE-1);   // BLOCK
-    if ( n < 1 )
-    {
-      perror( "host-read()" );
-    }
+      perror("HTTP/1.1 405 Method not allowed \r\n\r\n\0");
+	  m = write( newsock, "HTTP/1.1 405 Method not allowed \r\n\r\n\0", strlen("HTTP/1.1 405 Method not allowed \r\n\r\n\0")+1 );
+	  if ( m < strlen( serverBuffer ) )
+	  {
+	    perror( "405-write error" );
+	    exit( 1 );
+	  }
+	    exit(1);
+    } 
     else
     {
-      serverBuffer[n] = '\0'; 
-      printf( "host-Received message from server: %s\n", serverBuffer );
+      int blacklistedHost = 0;
+      for (; blacklistedHost < blacklistSize; blacklistedHost++)
+      {
+	char* blacklistEntry = malloc(strlen(blacklist[blacklistedHost]));
+	strcpy(blacklistEntry, blacklist[blacklistedHost]);
+	if( strtok(blacklistEntry, hostname) == NULL)
+        {
+	  perror("HTTP/1.1 HTTP 403 Forbidden \r\n\r\n\0");
+	  m = write( newsock, "HTTP/1.1 403 Method not allowed \r\n\r\n\0", strlen("HTTP/1.1 403 Method not allowed \r\n\r\n\0")+1 );
+	  if ( m < strlen( serverBuffer ) )
+	  {
+	    perror( "403-write error" );
+	    exit( 1 );
+	  }
+	    exit(1);
+        }
+        free(blacklistEntry);
+      }
+      filteredRequest = filterRequest(clientBuffer);
+      /* create connection to host */
+      struct sockaddr_in host;
+      struct hostent *hp;
+      int hostsock = socket( PF_INET, SOCK_STREAM, 0 );
+      hp = gethostbyname( hostname );
+      bcopy( (char *)hp->h_addr, (char *)&host.sin_addr, hp->h_length );
+
+      host.sin_family = AF_INET;
+      host.sin_port = htons(80);
+      if ( connect( hostsock, (struct sockaddr *)&host, sizeof( host) ) < 0 ) {
+        perror( "host-connect()" );
+        exit( 1 );
+      }
+      n = write( hostsock, filteredRequest, strlen(clientBuffer) );
+      if ( n < strlen( clientBuffer ) )
+      {
+        perror( "host-write()" );
+        exit( 1 );
+      }
+      n=1;
+      while(n != 0)
+      {
+        n = read( hostsock, serverBuffer, BUFFER_SIZE-1);   // BLOCK
+        if ( n < 0 )
+        {
+          perror( "host-read()" );
+        }
+        else
+        {
+          serverBuffer[n] = '\0'; 
+        }
+        m = write( newsock, serverBuffer, strnlen( serverBuffer, BUFFER_SIZE-1 ) );
+        if ( m < strlen( serverBuffer ) )
+        {
+          perror( "host-write()" );
+          exit( 1 );
+        }
+      } 
+      free(filteredRequest);
+      close( hostsock);
+      exit(0);
     }
-    m = write( newsock, serverBuffer, strnlen( serverBuffer, BUFFER_SIZE-1 ) );
-    if ( m < strlen( serverBuffer ) )
-    {
-      perror( "host-write()" );
-      exit( 1 );
-    }
-  } 
-  
-  m = write( newsock, '\0', 0);
-  if ( m < strlen( serverBuffer ) )
-  {
-    perror( "host-write nullterminate()" );
-    exit( 1 );
   }
-  free(filteredRequest);
-  close( hostsock);
-  exit(0);
 }
+
